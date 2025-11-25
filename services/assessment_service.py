@@ -1,13 +1,16 @@
 from typing import Dict, Any
-from prompts import RIASEC_PROMPT, SKILLS_PROMPT
+from prompts import RIASEC_PROMPT, SKILLS_PROMPT, VALUES_PROMPT, BIG5_PROMPT, LEARNING_PROMPT
 from services.chat_service import chat_service
-from services.vectors import riasec_vector, skills_vector
+from services.vectors import riasec_vector, skills_vector, values_vector, big5_vector, learning_vector
 
 class AssessmentService:
     def __init__(self):
         self.vector_services = {
             "riasec": (riasec_vector, RIASEC_PROMPT),
-            "skills": (skills_vector, SKILLS_PROMPT)
+            "skills": (skills_vector, SKILLS_PROMPT),
+            "values": (values_vector, VALUES_PROMPT),
+            "big5": (big5_vector, BIG5_PROMPT),
+            "learning": (learning_vector, LEARNING_PROMPT)
         }
 
     async def process_assessment(self, user_text: str, assessment_type: str, current_state: dict, conversation_history: list = None) -> Dict[str, Any]:
