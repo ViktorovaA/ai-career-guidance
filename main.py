@@ -1,110 +1,83 @@
 import os
 from fastapi import FastAPI
-from pydantic import BaseModel
 from dotenv import load_dotenv
-from openai import OpenAI
 
-from prompts import SYSTEM_PROMPT
+# Импорты из вашей структуры
+from models.schemas import AskRequest, AskResponse
+from services.assessment_service import assessment_service
+from storage.state_manager import state_manager
 
 load_dotenv()
 
-app = FastAPI()
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-# ---------------------------
-# Хранилище состояния (вместо Redis)
-# ---------------------------
-user_states = {}  # user_id -> { scores, confidence, finished }
-
-
-class AskRequest(BaseModel):
-    user_id: str
-    text: str
-
-
-class AskResponse(BaseModel):
-    type: str  # "question" | "finish"
-    text: str
-    scores: dict | None = None
-
-
-def default_scores():
-    return {k: 0.0 for k in "RIASEC"}
-
-
-def default_confidence():
-    return {k: 0.0 for k in "RIASEC"}
-
-
-def mix_vectors(old, new, weight_old=0.7, weight_new=0.3):
-    return {
-        k: old[k] * weight_old + new[k] * weight_new
-        for k in old.keys()
-    }
+app = FastAPI(debug=os.getenv("DEBUG", "false").lower() == "true")
 
 
 @app.post("/ask", response_model=AskResponse)
 async def ask(request: AskRequest):
     user_id = request.user_id
     text = request.text
+    assessment_type = "riasec"  # Используем RIASEC
 
-    # Инициализация состояния
-    if user_id not in user_states:
-        user_states[user_id] = {
-            "scores": default_scores(),
-            "confidence": default_confidence(),
-            "finished": False
-        }
+    # Получаем состояние пользователя
+    state = state_manager.get_user_state(user_id, assessment_type)
 
-    state = user_states[user_id]
-
-    # ---------------------------
-    # GPT — анализ ответа
-    # ---------------------------
-    completion = client.responses.create(
-        model="gpt-4.1",   # можно заменить на gpt-4.1-mini
-        input=[
-            {
-                "role": "system",
-                "content": SYSTEM_PROMPT
-            },
-            {
-                "role": "user",
-                "content": text
-            }
-        ],
-        response_format={"type": "json_object"}
-    )
-
-    gpt_result = completion.output[0].content[0].text
-
-    import json
-    data = json.loads(gpt_result)
-
-    # ---------------------------
-    # Обновление векторов
-    # ---------------------------
-    new_scores = mix_vectors(state["scores"], data["scores"])
-    new_conf = mix_vectors(state["confidence"], data["confidence"])
-
-    state["scores"] = new_scores
-    state["confidence"] = new_conf
-    state["finished"] = data["should_finish"]
-
-    # ---------------------------
-    # Ответ пользователю
-    # ---------------------------
-    if state["finished"]:
-        return AskResponse(
-            type="finish",
-            text="Диагностика завершена. Ваш RIASEC-профиль:\n" +
-                 "\n".join([f"{k}: {round(v, 3)}" for k, v in new_scores.items()]),
-            scores=new_scores
+    # Обрабатываем сообщение через сервис оценки
+    try:
+        result = await assessment_service.process_assessment(
+            user_text=text,
+            assessment_type=assessment_type,
+            current_state=state
         )
 
+        new_state = result["state"]
+        response_data = result["response_data"]
+
+    except Exception as e:
+        # Обработка ошибок
+        return AskResponse(
+            type="question",
+            text="Произошла ошибка при обработке запроса. Пожалуйста, попробуйте еще раз.",
+            scores=state["scores"]
+        )
+
+    # Сохраняем обновленное состояние
+    state_manager.update_user_state(user_id, assessment_type, new_state)
+
+    # Формируем ответ пользователю
+    if new_state["finished"]:
+        scores_text = "\n".join([f"{k}: {round(v, 3)}" for k, v in new_state["scores"].items()])
+        return AskResponse(
+            type="finish",
+            text=f"Диагностика завершена. Ваш RIASEC-профиль:\n{scores_text}",
+            scores=new_state["scores"]
+        )
     else:
         return AskResponse(
             type="question",
-            text=data["next_question"],
-            scores=new_scores
+            text=response_data["next_question"],
+            scores=new_state["scores"]
         )
+
+
+@app.get("/")
+async def root():
+    return {"message": "RIASEC Assessment API is running"}
+
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
+
+
+@app.get("/user/{user_id}/state")
+async def get_user_state(user_id: str):
+    """Эндпоинт для отладки - посмотреть состояние пользователя"""
+    state = state_manager.get_user_state(user_id, "riasec")
+    return {"user_id": user_id, "state": state}
+
+
+@app.delete("/user/{user_id}")
+async def reset_user_state(user_id: str):
+    """Эндпоинт для сброса состояния пользователя"""
+    state_manager.delete_user_state(user_id)
+    return {"message": f"State for user {user_id} has been reset"}
