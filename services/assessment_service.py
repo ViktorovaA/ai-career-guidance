@@ -3,6 +3,8 @@ from prompts import RIASEC_PROMPT, SKILLS_PROMPT, VALUES_PROMPT, BIG5_PROMPT, LE
 from services.chat_service import chat_service
 from services.vectors import riasec_vector, skills_vector, values_vector, big5_vector, learning_vector
 
+
+# сервис для
 class AssessmentService:
     def __init__(self):
         self.vector_services = {

@@ -1,10 +1,14 @@
 from services.vectors import riasec_vector, skills_vector, values_vector, big5_vector, learning_vector
 
+# Порядок прохождения стадий
+ASSESSMENT_STAGES = ["riasec", "skills", "values", "big5", "learning"]
+
 
 class StateManager:
     def __init__(self):
         self.user_states = {}
         self.conversation_histories = {}
+        self.current_stages = {}  # Хранит текущую стадию для каждого пользователя
 
     def get_user_state(self, user_id: str, assessment_type: str = "riasec"):
         if user_id not in self.user_states:
@@ -75,6 +79,30 @@ class StateManager:
             del self.user_states[user_id]
         if user_id in self.conversation_histories:
             del self.conversation_histories[user_id]
+        if user_id in self.current_stages:
+            del self.current_stages[user_id]
+
+    def get_current_stage(self, user_id: str) -> str:
+        """Возвращает текущую стадию пользователя. Если стадии нет, возвращает первую."""
+        if user_id not in self.current_stages:
+            self.current_stages[user_id] = ASSESSMENT_STAGES[0]
+        return self.current_stages[user_id]
+
+    def move_to_next_stage(self, user_id: str) -> str | None:
+        """Переходит на следующую стадию. Возвращает новую стадию или None, если все стадии завершены."""
+        current = self.get_current_stage(user_id)
+        current_index = ASSESSMENT_STAGES.index(current)
+        
+        if current_index < len(ASSESSMENT_STAGES) - 1:
+            next_stage = ASSESSMENT_STAGES[current_index + 1]
+            self.current_stages[user_id] = next_stage
+            return next_stage
+        return None
+
+    def is_all_stages_completed(self, user_id: str) -> bool:
+        """Проверяет, завершены ли все стадии."""
+        current = self.get_current_stage(user_id)
+        return current == ASSESSMENT_STAGES[-1] and self.get_user_state(user_id, current).get("finished", False)
 
 
 state_manager = StateManager()
