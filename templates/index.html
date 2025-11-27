@@ -332,33 +332,9 @@
                 const messagesDiv = document.getElementById('chatMessages');
 
                 // Проверяем, является ли сообщение переходом между стадиями
-                const isTransition = content.includes('Диагностика') && content.includes('завершена') && content.includes('Переходим');
                 const isCompletion = content.includes('Все диагностики завершены');
 
-                if (isTransition) {
-                    // Добавляем специальный блок для перехода
-                    const transitionDiv = document.createElement('div');
-                    transitionDiv.className = 'stage-transition';
-                    transitionDiv.innerHTML = '🔄 ' + content.split('.')[0] + '.';
-                    messagesDiv.appendChild(transitionDiv);
-
-                    // Добавляем результаты предыдущей стадии
-                    const resultsDiv = document.createElement('div');
-                    resultsDiv.className = 'message bot';
-                    const contentDiv = document.createElement('div');
-                    contentDiv.className = 'message-content';
-
-                    // Извлекаем часть с результатами (после первого перевода строки)
-                    const resultsPart = content.split('\n\n').slice(1).join('\n\n');
-                    contentDiv.innerHTML = resultsPart;
-
-                    resultsDiv.appendChild(contentDiv);
-                    messagesDiv.appendChild(resultsDiv);
-
-                    // Отмечаем стадию как завершенную
-                    this.markStageCompleted();
-
-                } else if (isCompletion) {
+                if (isCompletion) {
                     // Финальное сообщение
                     const completionDiv = document.createElement('div');
                     completionDiv.className = 'completion-message';
