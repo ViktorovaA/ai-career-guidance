@@ -22,4 +22,4 @@ class AskResponse(BaseModel):
     type: str  # "question" | "finish"
     text: str
     scores: Optional[Dict[str, float]] = None
-    recommendations: Optional[Dict] = None  # {"professions": [...], "university_directions": [...], "summary": "..."}
+    #recommendations: Optional[Dict] = None  # {"professions": [...], "university_directions": [...], "summary": "..."}

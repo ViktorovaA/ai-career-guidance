@@ -3,6 +3,7 @@ import logging
 from fastapi import FastAPI, Request
 from dotenv import load_dotenv
 from fastapi.templating import Jinja2Templates
+from fastapi.middleware.cors import CORSMiddleware
 
 from models.schemas import AskRequest, AskResponse
 from services.assessment_service import assessment_service
@@ -20,6 +21,16 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = FastAPI(debug=os.getenv("DEBUG", "false").lower() == "true")
+
+# Добавляем CORS для фронтенда
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 templates = Jinja2Templates(directory="templates")
 
 
@@ -31,7 +42,7 @@ async def read_root(request: Request):
 def _format_vectors_for_prompt(all_vectors: dict) -> str:
     """Форматирует все векторы для передачи в промпт рекомендаций"""
     text_parts = []
-    
+
     # RIASEC
     if "riasec" in all_vectors:
         riasec = all_vectors["riasec"]["scores"]
@@ -39,7 +50,7 @@ def _format_vectors_for_prompt(all_vectors: dict) -> str:
         for key, value in riasec.items():
             text_parts.append(f"  {key}: {round(value, 3)}")
         text_parts.append("")
-    
+
     # Skills
     if "skills" in all_vectors:
         skills = all_vectors["skills"]["scores"]
@@ -51,7 +62,7 @@ def _format_vectors_for_prompt(all_vectors: dict) -> str:
         for key, value in skills.items():
             text_parts.append(f"  {skill_names.get(key, key)}: {round(value, 3)}")
         text_parts.append("")
-    
+
     # Values
     if "values" in all_vectors:
         values = all_vectors["values"]["scores"]
@@ -66,7 +77,7 @@ def _format_vectors_for_prompt(all_vectors: dict) -> str:
         for key, value in values.items():
             text_parts.append(f"  {value_names.get(key, key)}: {round(value, 3)}")
         text_parts.append("")
-    
+
     # Big5
     if "big5" in all_vectors:
         big5 = all_vectors["big5"]["scores"]
@@ -79,7 +90,7 @@ def _format_vectors_for_prompt(all_vectors: dict) -> str:
         for key, value in big5.items():
             text_parts.append(f"  {trait_names.get(key, key)}: {round(value, 3)}")
         text_parts.append("")
-    
+
     # Learning
     if "learning" in all_vectors:
         learning = all_vectors["learning"]["scores"]
@@ -93,48 +104,47 @@ def _format_vectors_for_prompt(all_vectors: dict) -> str:
         for key, value in learning.items():
             text_parts.append(f"  {style_names.get(key, key)}: {round(value, 3)}")
         text_parts.append("")
-    
+
     return "\n".join(text_parts)
 
 
 def _format_recommendations_response(recommendations_data: dict) -> str:
     """Форматирует рекомендации для отображения пользователю"""
-    text_parts = ["Все диагностики завершены. На основе вашего профиля мы подготовили рекомендации.\n"]
-    
+    text_parts = ["🎉 Все диагностики завершены! На основе вашего профиля мы подготовили рекомендации.\n"]
+
     # Summary
     if "summary" in recommendations_data:
         text_parts.append(f"📋 Общее резюме:\n{recommendations_data['summary']}\n")
-    
+
     # Professions
     if "professions" in recommendations_data and recommendations_data["professions"]:
         text_parts.append("💼 Рекомендуемые профессии:")
-        for i, prof in enumerate(recommendations_data["professions"], 1):
-            text_parts.append(f"\n{i}. {prof.get('name', 'Неизвестно')} (соответствие: {prof.get('match_score', 0)*100:.1f}%)")
+        for i, prof in enumerate(recommendations_data["professions"][:5], 1):  # Ограничиваем 5 профессиями
+            text_parts.append(
+                f"\n{i}. {prof.get('name', 'Неизвестно')} (соответствие: {prof.get('match_score', 0) * 100:.1f}%)")
             if prof.get('description'):
                 text_parts.append(f"   {prof['description']}")
             if prof.get('reasons'):
                 text_parts.append("   Почему подходит:")
-                for reason in prof['reasons']:
+                for reason in prof['reasons'][:3]:  # Ограничиваем 3 причинами
                     text_parts.append(f"   • {reason}")
         text_parts.append("")
-    
+
     # University directions
     if "university_directions" in recommendations_data and recommendations_data["university_directions"]:
         text_parts.append("🎓 Рекомендуемые направления в вузах:")
-        for i, direction in enumerate(recommendations_data["university_directions"], 1):
-            text_parts.append(f"\n{i}. {direction.get('name', 'Неизвестно')} (соответствие: {direction.get('match_score', 0)*100:.1f}%)")
+        for i, direction in enumerate(recommendations_data["university_directions"][:5],
+                                      1):  # Ограничиваем 5 направлениями
+            text_parts.append(
+                f"\n{i}. {direction.get('name', 'Неизвестно')} (соответствие: {direction.get('match_score', 0) * 100:.1f}%)")
             if direction.get('code'):
                 text_parts.append(f"   Код: {direction['code']}")
             if direction.get('description'):
                 text_parts.append(f"   {direction['description']}")
-            if direction.get('reasons'):
-                text_parts.append("   Почему подходит:")
-                for reason in direction['reasons']:
-                    text_parts.append(f"   • {reason}")
         text_parts.append("")
-    
-    text_parts.append("Спасибо за прохождение диагностики!")
-    
+
+    text_parts.append("🌟 Спасибо за прохождение диагностики!")
+
     return "\n".join(text_parts)
 
 
@@ -152,10 +162,6 @@ async def ask(request: AskRequest):
 
     # Логируем входящий запрос
     logger.info(f"[INCOMING REQUEST] user_id={user_id}, stage={assessment_type}, text_length={len(text)}")
-    logger.debug(f"[INCOMING REQUEST] user_id={user_id}, text='{text[:100]}...' (truncated)" if len(
-        text) > 100 else f"[INCOMING REQUEST] user_id={user_id}, text='{text}'")
-    logger.debug(f"[INCOMING REQUEST] user_id={user_id}, current_state={state}")
-    logger.debug(f"[INCOMING REQUEST] user_id={user_id}, conversation_history_length={len(conversation_history)}")
 
     # Добавляем текущее сообщение пользователя в историю
     state_manager.add_to_conversation_history(user_id, assessment_type, "user", text)
@@ -167,7 +173,7 @@ async def ask(request: AskRequest):
             user_text=text,
             assessment_type=assessment_type,
             current_state=state,
-            conversation_history=conversation_history  # Передаем историю
+            conversation_history=conversation_history
         )
 
         new_state = result["state"]
@@ -176,12 +182,6 @@ async def ask(request: AskRequest):
         # Логируем результат обработки
         logger.info(
             f"[PROCESSING RESULT] user_id={user_id}, stage={assessment_type}, finished={new_state.get('finished', False)}")
-        logger.debug(f"[PROCESSING RESULT] user_id={user_id}, new_state={new_state}")
-        logger.debug(f"[PROCESSING RESULT] user_id={user_id}, response_data keys={list(response_data.keys())}")
-        logger.debug(
-            f"[PROCESSING RESULT] user_id={user_id}, next_question='{response_data.get('next_question', '')[:100]}...' (truncated)" if len(
-                response_data.get('next_question',
-                                  '')) > 100 else f"[PROCESSING RESULT] user_id={user_id}, next_question='{response_data.get('next_question', '')}'")
 
         # Добавляем ответ ассистента в историю
         state_manager.add_to_conversation_history(
@@ -192,7 +192,7 @@ async def ask(request: AskRequest):
         logger.error(f"[ERROR] user_id={user_id}, stage={assessment_type}, error={str(e)}", exc_info=True)
         return AskResponse(
             type="question",
-            text=f"Произошла ошибка при обработке запроса. Пожалуйста, попробуйте еще раз. {e}",
+            text="Произошла ошибка при обработке запроса. Пожалуйста, попробуйте еще раз.",
             scores=state["scores"]
         )
 
@@ -208,15 +208,20 @@ async def ask(request: AskRequest):
         if next_stage is None:
             # Все стадии завершены - генерируем рекомендации
             logger.info(f"[ALL STAGES COMPLETED] user_id={user_id}, generating recommendations")
-            
+
             # Получаем все векторы пользователя
-            all_vectors = state_manager.get_all_vectors(user_id)
-            logger.debug(f"[RECOMMENDATIONS] user_id={user_id}, all_vectors={all_vectors}")
-            
+            all_vectors = {}
+            for stage in ["riasec", "skills", "values", "big5", "learning"]:
+                stage_state = state_manager.get_user_state(user_id, stage)
+                if stage_state and "scores" in stage_state:
+                    all_vectors[stage] = stage_state
+
+            logger.debug(f"[RECOMMENDATIONS] user_id={user_id}, all_vectors_keys={list(all_vectors.keys())}")
+
             # Формируем текст с данными для промпта
             vectors_text = _format_vectors_for_prompt(all_vectors)
             logger.debug(f"[RECOMMENDATIONS] user_id={user_id}, vectors_text_length={len(vectors_text)}")
-            
+
             # Генерируем рекомендации
             try:
                 recommendations_data = chat_service.process_message(
@@ -225,28 +230,28 @@ async def ask(request: AskRequest):
                     conversation_history=None
                 )
                 logger.info(f"[RECOMMENDATIONS] user_id={user_id}, recommendations_generated=true")
-                logger.debug(f"[RECOMMENDATIONS] user_id={user_id}, recommendations={recommendations_data}")
-                
+
                 # Формируем текст ответа с рекомендациями
                 response_text = _format_recommendations_response(recommendations_data)
-                
+
                 response = AskResponse(
                     type="finish",
                     text=response_text,
-                    scores=None,
-                    recommendations=recommendations_data
+                    scores=None
                 )
-                logger.info(f"[OUTGOING RESPONSE] user_id={user_id}, type=finish, all_stages_completed=true, recommendations_included=true")
+                logger.info(
+                    f"[OUTGOING RESPONSE] user_id={user_id}, type=finish, all_stages_completed=true, recommendations_included=true")
                 return response
             except Exception as e:
                 logger.error(f"[RECOMMENDATIONS ERROR] user_id={user_id}, error={str(e)}", exc_info=True)
                 # Если не удалось сгенерировать рекомендации, возвращаем обычное сообщение
                 response = AskResponse(
                     type="finish",
-                    text="Все диагностики завершены. Спасибо за прохождение!",
+                    text="🎉 Все диагностики завершены! Спасибо за прохождение!",
                     scores=None
                 )
-                logger.info(f"[OUTGOING RESPONSE] user_id={user_id}, type=finish, all_stages_completed=true, recommendations_failed=true")
+                logger.info(
+                    f"[OUTGOING RESPONSE] user_id={user_id}, type=finish, all_stages_completed=true, recommendations_failed=true")
                 return response
         else:
             # Стадия завершена, переходим на следующую
@@ -261,7 +266,7 @@ async def ask(request: AskRequest):
             current_stage_name = stage_names.get(assessment_type, assessment_type)
             next_stage_name = stage_names.get(next_stage, next_stage)
 
-            message = f"Диагностика {current_stage_name} завершена. Переходим к диагностике {next_stage_name}."
+            message = f"✅ Диагностика {current_stage_name} завершена. Переходим к диагностике {next_stage_name}."
 
             # Формируем сообщение с результатами текущей стадии
             if assessment_type == "riasec":
@@ -309,7 +314,6 @@ async def ask(request: AskRequest):
             )
             logger.info(
                 f"[OUTGOING RESPONSE] user_id={user_id}, type=question, stage_transition=true, new_stage={next_stage}")
-            logger.debug(f"[OUTGOING RESPONSE] user_id={user_id}, response_text_length={len(message)}")
             return response
 
     # Если стадия не завершена, возвращаем следующий вопрос
@@ -319,11 +323,6 @@ async def ask(request: AskRequest):
         scores=new_state["scores"]
     )
     logger.info(f"[OUTGOING RESPONSE] user_id={user_id}, type=question, stage={assessment_type}, finished=false")
-    logger.debug(
-        f"[OUTGOING RESPONSE] user_id={user_id}, response_text='{response_data['next_question'][:100]}...' (truncated)" if len(
-            response_data[
-                'next_question']) > 100 else f"[OUTGOING RESPONSE] user_id={user_id}, response_text='{response_data['next_question']}'")
-    logger.debug(f"[OUTGOING RESPONSE] user_id={user_id}, scores={new_state['scores']}")
     return response
 
 
