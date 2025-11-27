@@ -133,8 +133,7 @@ def _format_recommendations_response(recommendations_data: dict) -> str:
     # University directions
     if "university_directions" in recommendations_data and recommendations_data["university_directions"]:
         text_parts.append("🎓 Рекомендуемые направления в вузах:")
-        for i, direction in enumerate(recommendations_data["university_directions"][:5],
-                                      1):  # Ограничиваем 5 направлениями
+        for i, direction in enumerate(recommendations_data["university_directions"][:5], 1):  # Ограничиваем 5 направлениями
             text_parts.append(
                 f"\n{i}. {direction.get('name', 'Неизвестно')} (соответствие: {direction.get('match_score', 0) * 100:.1f}%)")
             if direction.get('code'):
@@ -253,27 +252,77 @@ async def ask(request: AskRequest):
                 logger.info(
                     f"[OUTGOING RESPONSE] user_id={user_id}, type=finish, all_stages_completed=true, recommendations_failed=true")
                 return response
+
         else:
-            # Стадия завершена, переходим на следующую
+            # Стадия завершена, переходим на следующую - БЕЗ УВЕДОМЛЕНИЯ ПОЛЬЗОВАТЕЛЯ
             logger.info(f"[STAGE TRANSITION] user_id={user_id}, from={assessment_type}, to={next_stage}")
-            stage_names = {
-                "riasec": "профессиональных интересов (RIASEC)",
-                "skills": "когнитивных навыков",
-                "values": "ценностей",
-                "big5": "личности (Big Five)",
-                "learning": "стилей обучения"
-            }
-            current_stage_name = stage_names.get(assessment_type, assessment_type)
-            next_stage_name = stage_names.get(next_stage, next_stage)
 
+            # Получаем состояние для следующей стадии
+            next_state = state_manager.get_user_state(user_id, next_stage)
+            next_conversation_history = state_manager.get_conversation_history(user_id, next_stage)
 
-            response = AskResponse(
-                type="question",
-                scores=new_state["scores"]  # scores передаем для прогресс-бара, но не показываем пользователю
-            )
-        logger.info(
-            f"[OUTGOING RESPONSE] user_id={user_id}, type=question, stage_transition=true, new_stage={next_stage}")
-        return response
+            # Если это начало новой диагностики, получаем первый вопрос
+            if len(next_conversation_history) == 0:
+                try:
+                    logger.info(f"[NEW STAGE START] user_id={user_id}, stage={next_stage}, getting first question")
+                    first_question_result = await assessment_service.process_assessment(
+                        user_text="",  # Пустое сообщение для получения первого вопроса
+                        assessment_type=next_stage,
+                        current_state=next_state,
+                        conversation_history=None
+                    )
+
+                    first_question_state = first_question_result["state"]
+                    first_question_data = first_question_result["response_data"]
+
+                    # Сохраняем первый вопрос в историю
+                    state_manager.add_to_conversation_history(
+                        user_id, next_stage, "assistant", first_question_data["next_question"]
+                    )
+                    state_manager.update_user_state(user_id, next_stage, first_question_state)
+
+                    # Возвращаем первый вопрос следующей диагностики
+                    response = AskResponse(
+                        type="question",
+                        text=first_question_data["next_question"],
+                        scores=first_question_state["scores"]
+                    )
+                    logger.info(
+                        f"[OUTGOING RESPONSE] user_id={user_id}, type=question, new_stage_started={next_stage}")
+                    return response
+
+                except Exception as e:
+                    logger.error(f"[NEW STAGE ERROR] user_id={user_id}, stage={next_stage}, error={str(e)}",
+                                 exc_info=True)
+                    # Если ошибка, возвращаем общий вопрос
+                    response = AskResponse(
+                        type="question",
+                        text="Продолжаем диагностику. Расскажите больше о себе...",
+                        scores=next_state["scores"]
+                    )
+                    return response
+
+            # Если история уже есть, продолжаем с того же места
+            else:
+                # Возвращаем последний вопрос из истории следующей стадии
+                last_message = next_conversation_history[-1]
+                if last_message["role"] == "assistant":
+                    response = AskResponse(
+                        type="question",
+                        text=last_message["content"],
+                        scores=next_state["scores"]
+                    )
+                    logger.info(
+                        f"[OUTGOING RESPONSE] user_id={user_id}, type=question, continuing_stage={next_stage}")
+                    return response
+                else:
+                    # Если последнее сообщение от пользователя, запрашиваем следующий вопрос
+                    response = AskResponse(
+                        type="question",
+                        text="Продолжаем... Что еще вы можете рассказать?",
+                        scores=next_state["scores"]
+                    )
+                    return response
 
     # Если стадия не завершена, возвращаем следующий вопрос
     response = AskResponse(
