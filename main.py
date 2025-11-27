@@ -1,14 +1,15 @@
 import os
 import logging
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from dotenv import load_dotenv
+from fastapi.templating import Jinja2Templates
+
 from models.schemas import AskRequest, AskResponse
 from services.assessment_service import assessment_service
 from storage.state_manager import state_manager
 
 load_dotenv()
 
-# Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -17,6 +18,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = FastAPI(debug=os.getenv("DEBUG", "false").lower() == "true")
+templates = Jinja2Templates(directory="templates")
+
+
+@app.get("/")
+async def read_root(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
 
 
 @app.post("/ask", response_model=AskResponse)
@@ -33,7 +40,8 @@ async def ask(request: AskRequest):
 
     # Логируем входящий запрос
     logger.info(f"[INCOMING REQUEST] user_id={user_id}, stage={assessment_type}, text_length={len(text)}")
-    logger.debug(f"[INCOMING REQUEST] user_id={user_id}, text='{text[:100]}...' (truncated)" if len(text) > 100 else f"[INCOMING REQUEST] user_id={user_id}, text='{text}'")
+    logger.debug(f"[INCOMING REQUEST] user_id={user_id}, text='{text[:100]}...' (truncated)" if len(
+        text) > 100 else f"[INCOMING REQUEST] user_id={user_id}, text='{text}'")
     logger.debug(f"[INCOMING REQUEST] user_id={user_id}, current_state={state}")
     logger.debug(f"[INCOMING REQUEST] user_id={user_id}, conversation_history_length={len(conversation_history)}")
 
@@ -54,10 +62,14 @@ async def ask(request: AskRequest):
         response_data = result["response_data"]
 
         # Логируем результат обработки
-        logger.info(f"[PROCESSING RESULT] user_id={user_id}, stage={assessment_type}, finished={new_state.get('finished', False)}")
+        logger.info(
+            f"[PROCESSING RESULT] user_id={user_id}, stage={assessment_type}, finished={new_state.get('finished', False)}")
         logger.debug(f"[PROCESSING RESULT] user_id={user_id}, new_state={new_state}")
         logger.debug(f"[PROCESSING RESULT] user_id={user_id}, response_data keys={list(response_data.keys())}")
-        logger.debug(f"[PROCESSING RESULT] user_id={user_id}, next_question='{response_data.get('next_question', '')[:100]}...' (truncated)" if len(response_data.get('next_question', '')) > 100 else f"[PROCESSING RESULT] user_id={user_id}, next_question='{response_data.get('next_question', '')}'")
+        logger.debug(
+            f"[PROCESSING RESULT] user_id={user_id}, next_question='{response_data.get('next_question', '')[:100]}...' (truncated)" if len(
+                response_data.get('next_question',
+                                  '')) > 100 else f"[PROCESSING RESULT] user_id={user_id}, next_question='{response_data.get('next_question', '')}'")
 
         # Добавляем ответ ассистента в историю
         state_manager.add_to_conversation_history(
@@ -80,7 +92,7 @@ async def ask(request: AskRequest):
         logger.info(f"[STAGE COMPLETED] user_id={user_id}, completed_stage={assessment_type}")
         # Переходим на следующую стадию
         next_stage = state_manager.move_to_next_stage(user_id)
-        
+
         if next_stage is None:
             # Все стадии завершены
             logger.info(f"[ALL STAGES COMPLETED] user_id={user_id}")
@@ -103,9 +115,9 @@ async def ask(request: AskRequest):
             }
             current_stage_name = stage_names.get(assessment_type, assessment_type)
             next_stage_name = stage_names.get(next_stage, next_stage)
-            
+
             message = f"Диагностика {current_stage_name} завершена. Переходим к диагностике {next_stage_name}."
-            
+
             # Формируем сообщение с результатами текущей стадии
             if assessment_type == "riasec":
                 scores_text = "\n".join([f"{k}: {round(v, 3)}" for k, v in new_state["scores"].items()])
@@ -144,13 +156,14 @@ async def ask(request: AskRequest):
                 }
                 scores_text = "\n".join([f"{style_names[k]}: {round(v, 3)}" for k, v in new_state["scores"].items()])
                 message += f"\n\nВаш профиль стилей обучения:\n{scores_text}"
-            
+
             response = AskResponse(
                 type="question",
                 text=message,
                 scores=new_state["scores"]
             )
-            logger.info(f"[OUTGOING RESPONSE] user_id={user_id}, type=question, stage_transition=true, new_stage={next_stage}")
+            logger.info(
+                f"[OUTGOING RESPONSE] user_id={user_id}, type=question, stage_transition=true, new_stage={next_stage}")
             logger.debug(f"[OUTGOING RESPONSE] user_id={user_id}, response_text_length={len(message)}")
             return response
 
@@ -161,7 +174,10 @@ async def ask(request: AskRequest):
         scores=new_state["scores"]
     )
     logger.info(f"[OUTGOING RESPONSE] user_id={user_id}, type=question, stage={assessment_type}, finished=false")
-    logger.debug(f"[OUTGOING RESPONSE] user_id={user_id}, response_text='{response_data['next_question'][:100]}...' (truncated)" if len(response_data['next_question']) > 100 else f"[OUTGOING RESPONSE] user_id={user_id}, response_text='{response_data['next_question']}'")
+    logger.debug(
+        f"[OUTGOING RESPONSE] user_id={user_id}, response_text='{response_data['next_question'][:100]}...' (truncated)" if len(
+            response_data[
+                'next_question']) > 100 else f"[OUTGOING RESPONSE] user_id={user_id}, response_text='{response_data['next_question']}'")
     logger.debug(f"[OUTGOING RESPONSE] user_id={user_id}, scores={new_state['scores']}")
     return response
 
@@ -171,6 +187,7 @@ async def get_conversation_history(user_id: str, assessment_type: str):
     """Эндпоинт для отладки - посмотреть историю диалога"""
     history = state_manager.get_conversation_history(user_id, assessment_type)
     return {"user_id": user_id, "assessment_type": assessment_type, "history": history}
+
 
 @app.get("/user/{user_id}/current_stage")
 async def get_current_stage(user_id: str):

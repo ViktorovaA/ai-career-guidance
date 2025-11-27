@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Карьерная диагностика</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .chat-container {
+            width: 100%;
+            max-width: 800px;
+            height: 90vh;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #2c3e50, #3498db);
+            color: white;
+            padding: 25px;
+            text-align: center;
+            border-radius: 20px 20px 0 0;
+        }
+
+        .header h1 {
+            font-size: 1.8em;
+            margin-bottom: 5px;
+        }
+
+        .progress-bar {
+            height: 6px;
+            background: rgba(255,255,255,0.3);
+            margin: 10px 0;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .progress {
+            height: 100%;
+            background: #27ae60;
+            width: 0%;
+            transition: width 0.5s ease;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+
+        .message {
+            margin-bottom: 20px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .message.bot {
+            text-align: left;
+        }
+
+        .message.user {
+            text-align: right;
+        }
+
+        .message-content {
+            display: inline-block;
+            max-width: 80%;
+            padding: 15px 20px;
+            border-radius: 20px;
+            line-height: 1.5;
+            font-size: 16px;
+        }
+
+        .message.bot .message-content {
+            background: white;
+            border: 1px solid #e1e8ed;
+            border-bottom-left-radius: 5px;
+        }
+
+        .message.user .message-content {
+            background: #3498db;
+            color: white;
+            border-bottom-right-radius: 5px;
+        }
+
+        .stage-transition {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 10px 0;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .scores-display {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 10px;
+            padding: 12px;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+
+        .typing {
+            color: #7f8c8d;
+            font-style: italic;
+            padding: 10px;
+            text-align: center;
+            display: none;
+        }
+
+        .input-area {
+            padding: 20px;
+            border-top: 1px solid #e9ecef;
+            background: white;
+            border-radius: 0 0 20px 20px;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        #userInput {
+            flex: 1;
+            padding: 15px 20px;
+            border: 2px solid #e9ecef;
+            border-radius: 25px;
+            outline: none;
+            font-size: 16px;
+            font-family: inherit;
+        }
+
+        #userInput:focus {
+            border-color: #3498db;
+        }
+
+        #sendBtn {
+            padding: 15px 30px;
+            background: #27ae60;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            font-family: inherit;
+            transition: background 0.3s ease;
+        }
+
+        #sendBtn:hover:not(:disabled) {
+            background: #219a52;
+        }
+
+        #sendBtn:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .completion-message {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 10px 0;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="header">
+            <h1>Карьерная диагностика</h1>
+            <p>Автоматическая диагностика по всем направлениям</p>
+            <div class="progress-bar">
+                <div class="progress" id="progressBar"></div>
+            </div>
+        </div>
+
+        <div class="chat-messages" id="chatMessages">
+            <div class="message bot">
+                <div class="message-content">
+                    Привет! Я проведу комплексную диагностику для определения вашей карьеры.<br><br>
+                    Просто отвечайте на вопросы, система сама перейдет к следующему этапу!
+                </div>
+            </div>
+        </div>
+
+        <div class="typing" id="typingIndicator">AI анализирует ваш ответ...</div>
+
+        <div class="input-area">
+            <div class="input-group">
+                <input type="text" id="userInput" placeholder="Введите ваш ответ..." autofocus>
+                <button id="sendBtn">Отправить</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class ContinuousChat {
+            constructor() {
+                this.userId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+                this.isWaiting = false;
+                this.currentStage = null;
+                this.completedStages = new Set();
+                this.totalStages = 5; // riasec, skills, values, big5, learning
+
+                this.setupEventListeners();
+                this.startConversation();
+            }
+
+            setupEventListeners() {
+                document.getElementById('sendBtn').addEventListener('click', () => this.sendMessage());
+                document.getElementById('userInput').addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') this.sendMessage();
+                });
+            }
+
+            async startConversation() {
+                // Начинаем беседу с пустым сообщением чтобы получить первый вопрос
+                await this.sendToBackend('');
+            }
+
+            async sendMessage() {
+                if (this.isWaiting) return;
+
+                const input = document.getElementById('userInput');
+                const message = input.value.trim();
+
+                if (!message) return;
+
+                // Добавляем сообщение пользователя
+                this.addMessage('user', message);
+                input.value = '';
+
+                // Показываем индикатор набора
+                this.setWaiting(true);
+
+                try {
+                    const response = await this.sendToBackend(message);
+                    this.handleResponse(response);
+                } catch (error) {
+                    this.addMessage('bot', '❌ Произошла ошибка. Пожалуйста, попробуйте еще раз.');
+                    console.error('Error:', error);
+                } finally {
+                    this.setWaiting(false);
+                }
+            }
+
+            async sendToBackend(message) {
+                const response = await fetch('/ask', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        user_id: this.userId,
+                        text: message
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                return await response.json();
+            }
+
+            handleResponse(response) {
+                // Обновляем прогресс
+                this.updateProgress(response);
+
+                if (response.type === 'finish') {
+                    // Все диагностики завершены
+                    this.addMessage('bot', response.text);
+                    this.disableInput();
+                    this.showCompletion();
+                } else {
+                    // Продолжаем диагностику
+                    this.addMessage('bot', response.text);
+                }
+            }
+
+            updateProgress(response) {
+                // Определяем прогресс на основе scores
+                let progress = 0;
+
+                if (response.scores) {
+                    // Если есть конкретные оценки, используем их для прогресса
+                    const scores = response.scores;
+                    const scoreCount = Object.keys(scores).length;
+
+                    if (scoreCount > 0) {
+                        // Среднее значение scores как индикатор прогресса внутри стадии
+                        const sum = Object.values(scores).reduce((a, b) => a + b, 0);
+                        const avgScore = sum / scoreCount;
+                        progress = Math.min(avgScore * 100, 100);
+                    }
+                }
+
+                // Базовая логика прогресса по стадиям
+                const stageProgress = (this.completedStages.size / this.totalStages) * 100;
+                const overallProgress = Math.max(progress, stageProgress);
+
+                document.getElementById('progressBar').style.width = `${overallProgress}%`;
+            }
+
+            addMessage(sender, content) {
+                const messagesDiv = document.getElementById('chatMessages');
+
+                // Проверяем, является ли сообщение переходом между стадиями
+                const isTransition = content.includes('Диагностика') && content.includes('завершена') && content.includes('Переходим');
+                const isCompletion = content.includes('Все диагностики завершены');
+
+                if (isTransition) {
+                    // Добавляем специальный блок для перехода
+                    const transitionDiv = document.createElement('div');
+                    transitionDiv.className = 'stage-transition';
+                    transitionDiv.innerHTML = '🔄 ' + content.split('.')[0] + '.';
+                    messagesDiv.appendChild(transitionDiv);
+
+                    // Добавляем результаты предыдущей стадии
+                    const resultsDiv = document.createElement('div');
+                    resultsDiv.className = 'message bot';
+                    const contentDiv = document.createElement('div');
+                    contentDiv.className = 'message-content';
+
+                    // Извлекаем часть с результатами (после первого перевода строки)
+                    const resultsPart = content.split('\n\n').slice(1).join('\n\n');
+                    contentDiv.innerHTML = resultsPart;
+
+                    resultsDiv.appendChild(contentDiv);
+                    messagesDiv.appendChild(resultsDiv);
+
+                    // Отмечаем стадию как завершенную
+                    this.markStageCompleted();
+
+                } else if (isCompletion) {
+                    // Финальное сообщение
+                    const completionDiv = document.createElement('div');
+                    completionDiv.className = 'completion-message';
+                    completionDiv.innerHTML = '🎉 ' + content;
+                    messagesDiv.appendChild(completionDiv);
+
+                } else {
+                    // Обычное сообщение
+                    const messageDiv = document.createElement('div');
+                    messageDiv.className = `message ${sender}`;
+
+                    const contentDiv = document.createElement('div');
+                    contentDiv.className = 'message-content';
+                    contentDiv.innerHTML = content;
+
+                    messageDiv.appendChild(contentDiv);
+                    messagesDiv.appendChild(messageDiv);
+                }
+
+                this.scrollToBottom();
+            }
+
+            markStageCompleted() {
+                // Простая логика отслеживания завершенных стадий
+                // В реальном приложении это можно получать с бэкенда
+                this.completedStages.add(`stage_${this.completedStages.size + 1}`);
+            }
+
+            showCompletion() {
+                const inputArea = document.querySelector('.input-area');
+                inputArea.innerHTML = `
+                    <div style="text-align: center; padding: 20px;">
+                        <div style="background: #d4edda; border: 1px solid #c3e6cb; border-radius: 10px; padding: 20px;">
+                            <h3 style="color: #155724; margin-bottom: 10px;">🎊 Диагностика завершена!</h3>
+                            <p style="color: #155724; margin-bottom: 15px;">Спасибо за прохождение всех этапов диагностики.</p>
+                            <button onclick="location.reload()" style="
+                                background: #28a745;
+                                color: white;
+                                border: none;
+                                padding: 10px 20px;
+                                border-radius: 20px;
+                                cursor: pointer;
+                                font-size: 16px;
+                            ">Начать заново</button>
+                        </div>
+                    </div>
+                `;
+            }
+
+            disableInput() {
+                document.getElementById('userInput').disabled = true;
+                document.getElementById('sendBtn').disabled = true;
+                document.getElementById('userInput').placeholder = 'Диагностика завершена';
+            }
+
+            setWaiting(waiting) {
+                this.isWaiting = waiting;
+                document.getElementById('userInput').disabled = waiting;
+                document.getElementById('sendBtn').disabled = waiting;
+                document.getElementById('typingIndicator').style.display = waiting ? 'block' : 'none';
+
+                if (!waiting) {
+                    document.getElementById('userInput').focus();
+                }
+            }
+
+            scrollToBottom() {
+                const messagesDiv = document.getElementById('chatMessages');
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }
+        }
+
+        // Запуск при загрузке страницы
+        document.addEventListener('DOMContentLoaded', () => {
+            new ContinuousChat();
+        });
+    </script>
+</body>
+</html>
