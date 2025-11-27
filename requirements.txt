@@ -3,3 +3,5 @@ uvicorn
 pydantic
 openai>=1.0.0
 python-dotenv
+jinja2>=3.1.0
+python-multipart
