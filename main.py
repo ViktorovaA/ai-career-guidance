@@ -257,7 +257,7 @@ async def ask(request: AskRequest):
             # Стадия завершена, переходим на следующую
             logger.info(f"[STAGE TRANSITION] user_id={user_id}, from={assessment_type}, to={next_stage}")
             stage_names = {
-                "riasec": "RIASEC",
+                "riasec": "профессиональных интересов (RIASEC)",
                 "skills": "когнитивных навыков",
                 "values": "ценностей",
                 "big5": "личности (Big Five)",
@@ -266,55 +266,14 @@ async def ask(request: AskRequest):
             current_stage_name = stage_names.get(assessment_type, assessment_type)
             next_stage_name = stage_names.get(next_stage, next_stage)
 
-            message = f"✅ Диагностика {current_stage_name} завершена. Переходим к диагностике {next_stage_name}."
-
-            # Формируем сообщение с результатами текущей стадии
-            if assessment_type == "riasec":
-                scores_text = "\n".join([f"{k}: {round(v, 3)}" for k, v in new_state["scores"].items()])
-                message += f"\n\nВаш профиль RIASEC:\n{scores_text}"
-            elif assessment_type == "skills":
-                skill_names = {
-                    "remember": "Помнить", "understand": "Понимать", "apply": "Применять",
-                    "analyze": "Анализировать", "evaluate": "Оценивать", "create": "Создавать"
-                }
-                scores_text = "\n".join([f"{skill_names[k]}: {round(v, 3)}" for k, v in new_state["scores"].items()])
-                message += f"\n\nВаш профиль когнитивных навыков:\n{scores_text}"
-            elif assessment_type == "values":
-                value_names = {
-                    "self_direction": "Независимость", "stimulation": "Новизна",
-                    "hedonism": "Удовольствие", "achievement": "Достижение",
-                    "power": "Власть", "security": "Безопасность",
-                    "conformity": "Следование правилам", "tradition": "Традиции",
-                    "benevolence": "Забота о близких", "universalism": "Универсализм"
-                }
-                scores_text = "\n".join([f"{value_names[k]}: {round(v, 3)}" for k, v in new_state["scores"].items()])
-                message += f"\n\nВаш профиль ценностей:\n{scores_text}"
-            elif assessment_type == "big5":
-                trait_names = {
-                    "openness": "Открытость опыту", "conscientiousness": "Сознательность",
-                    "extraversion": "Экстраверсия", "agreeableness": "Доброжелательность",
-                    "neuroticism": "Эмоциональная стабильность"
-                }
-                scores_text = "\n".join([f"{trait_names[k]}: {round(v, 3)}" for k, v in new_state["scores"].items()])
-                message += f"\n\nВаш профиль личности (Big Five):\n{scores_text}"
-            elif assessment_type == "learning":
-                style_names = {
-                    "reflective_active": "Рефлексивный-Активный",
-                    "intuitive_sensory": "Интуитивный-Сенсорный",
-                    "verbal_visual": "Вербальный-Визуальный",
-                    "global_sequential": "Глобальный-Последовательный"
-                }
-                scores_text = "\n".join([f"{style_names[k]}: {round(v, 3)}" for k, v in new_state["scores"].items()])
-                message += f"\n\nВаш профиль стилей обучения:\n{scores_text}"
 
             response = AskResponse(
                 type="question",
-                text=message,
-                scores=new_state["scores"]
+                scores=new_state["scores"]  # scores передаем для прогресс-бара, но не показываем пользователю
             )
-            logger.info(
-                f"[OUTGOING RESPONSE] user_id={user_id}, type=question, stage_transition=true, new_stage={next_stage}")
-            return response
+        logger.info(
+            f"[OUTGOING RESPONSE] user_id={user_id}, type=question, stage_transition=true, new_stage={next_stage}")
+        return response
 
     # Если стадия не завершена, возвращаем следующий вопрос
     response = AskResponse(
