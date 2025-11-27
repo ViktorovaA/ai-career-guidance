@@ -104,5 +104,17 @@ class StateManager:
         current = self.get_current_stage(user_id)
         return current == ASSESSMENT_STAGES[-1] and self.get_user_state(user_id, current).get("finished", False)
 
+    def get_all_vectors(self, user_id: str) -> dict:
+        """Возвращает все векторы пользователя со всех стадий."""
+        all_vectors = {}
+        for stage in ASSESSMENT_STAGES:
+            state = self.get_user_state(user_id, stage)
+            all_vectors[stage] = {
+                "scores": state.get("scores", {}),
+                "confidence": state.get("confidence", {}),
+                "finished": state.get("finished", False)
+            }
+        return all_vectors
+
 
 state_manager = StateManager()
